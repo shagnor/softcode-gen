@@ -18,7 +18,7 @@ descMotherSetup :: T.Text
 descMotherSetup = "This object lets you roleplay a pregnancy risk scene with [name(get(me/FATHER))].\n\nBy setting up this object, you will enable [name(get(me/FATHER))] to creampie you. 1 minute after being creampied, you will be able to do a pregnancy test. If you do get pregnant, over the next 9 minutes after taking the test, you will grow an embryo, then a fetus, then a baby. The baby will leave through the portal on birth. The pregnancy will be represented by an item in your inventory.\n\nTo consent and setup, type:\n@cpattr Pregnancy/SETUP-PREGNANCY=me\n@trigger me/SETUP-PREGNANCY\n\nBe aware that while pregnant or under pregnancy risk, the game takes a 10 credit + 1 quota deposit - but it is returned when the scenario ends."
 
 descMotherReady :: T.Text
-descMotherReady = "This object represents you being at risk of getting pregnant if you receive a creampie from [name(get(me/FATHER))].\n\nIf you want to withdraw consent for this, type:\n@destroy/instant [num(me)]\n\n[name(get(me/FATHER))] can type @pemit [num(me)]=creampie to cum in your pussy."
+descMotherReady = "This object represents you being at risk of getting pregnant if you receive a creampie from [name(get(me/FATHER))].\n\nIf you want to withdraw consent for this, type:\n@destroy/instant [num(me)]\n\n[name(get(me/FATHER))] can type @pemit [num(me)]=creampie to cum in your pussy.\nType \"consume fertility potion\" to increase your fertility.\n"
 
 descCreampie :: T.Text
 descCreampie = "A sticky creampie left in you by [name(get(me/FATHER))]. This might get you pregnant. To find out if you got pregnant, at least one minute after being creampied, you can type:\npregnancy test\nTo take a morning after pill and avoid getting pregnant, type:\n@destroy/instant [num(me)]"
@@ -27,11 +27,13 @@ descPregnant :: T.Text
 descPregnant = "A growing pregnancy inside you, fathered by [name(get(me/FATHER))]. Gestation is fast here - so you will soon give birth. To get an abortion instead, type \"@destroy/instant [num(me)]\""
 
 aNextCmd = Attr "NEXTCMD"
+aFertCmd = Attr "FERTCMD"
 aFather = Attr "FATHER"
 aMother = Attr "MOTHER"
 aSetup = Attr "SETUP-PREGNANCY"
 aForwardlist = Attr "FORWARDLIST"
 aGender = Attr "GENDER"
+aFertility = Attr "FERTILITY"
 
 motherSetupState :: [Softcode]
 motherSetupState = [
@@ -50,9 +52,12 @@ motherSetupState = [
 motherReadyState :: [Softcode]
 motherReadyState = [
     SoftcodeSetDesc me descMotherReady
+  , SoftcodeSetAttr aFertility me $ AttrValueExpr $ SoftEInt successChance
   , SoftcodePEmit (ObjExpr $ SoftEGet me aFather) "Type @pemit [num(me)]=creampie to cum in [name(get(me/MOTHER))]"
   , SoftcodeSetAttr aNextCmd me $ AttrValueListen "creampie" $
       [SoftcodeSwitch (SoftEVar "#") [(SoftEGet me aFather, creampieSetup)] []]
+  , SoftcodeSetAttr aFertCmd me $ AttrValueCommand "consume fertility potion" $
+      [SoftcodeSwitch (SoftEVar "#") [(SoftEGet me aMother, fertilityPotion)] []]
                    ]
 
 creampieSetup :: [Softcode]
@@ -62,12 +67,21 @@ creampieSetup = [
   , SoftcodeSetAttr aNextCmd me $ AttrValueCommand "pregnancy test" [
       SoftcodePEmit (ObjExpr $ SoftEGet me aMother) "It's too soon to take a pregnancy test"
       ]
-  , SoftcodeSet me [(False, FlagMonitor), (True, FlagCommands)]
+  , SoftcodeSet me [(False, FlagMonitor)]
   , SoftcodePEmit (ObjExpr $ SoftEGet me aFather) "Your cum squirts deep inside [name(get(me/MOTHER))]"
   , SoftcodePEmit (ObjExpr $ SoftEGet me aMother) "[name(get(me/FATHER))]'s cum squirts from his unprotected member deep into your pussy"
   , SoftcodeSetAttr aGender me $ AttrValueExpr $ SoftERand (SoftEInt 2)
   , SoftcodeWait pregSpeed readyToTest
                 ]
+
+fertilityPotion :: [Softcode]
+fertilityPotion = [
+    SoftcodeSetAttr aFertCmd me $ AttrValueCommand "consume fertility potion" $ [
+        SoftcodePEmit (ObjExpr $ SoftEGet me aMother) "You feel you are already as fertile as you will get."
+        ]
+  , SoftcodeSetAttr aFertility me $ AttrValueExpr $ SoftEInt (successChance * 2)
+  , SoftcodePEmit (ObjExpr $ SoftEGet me aMother) "You feel more fertile already."
+                  ]
 
 readyToTest :: [Softcode]
 readyToTest = [
@@ -77,7 +91,7 @@ readyToTest = [
 
 validTakeTest :: [Softcode]
 validTakeTest = [
-  SoftcodeSwitch (SoftELte (SoftERand $ SoftEInt 100) (SoftEInt successChance))
+  SoftcodeSwitch (SoftELte (SoftERand $ SoftEInt 100) (SoftEGet me aFertility))
     [(SoftEInt 1, gotPregnant)] notPregnant
                 ]
 
@@ -135,7 +149,7 @@ motherSetup =
         SoftcodeGet it
       , SoftcodeChown it me
       , SoftcodeListen me "*"
-      , SoftcodeSet it [(False, FlagHalted), (True, FlagMonitor)]
+      , SoftcodeSet it [(False, FlagHalted), (True, FlagMonitor), (True, FlagCommands)]
       , SoftcodeRaw "consent to pregnancy risk"
     ]
 
