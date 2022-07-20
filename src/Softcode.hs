@@ -18,9 +18,10 @@ instance AsText ObjName where
   toText ObjHere = "here"
   toText (ObjExpr e) = "[" <> toText e <> "]"
 
-data Attr = Attr { attrName :: T.Text }
+data Attr = Attr { attrName :: T.Text } | DynamicAttr T.Text SoftExpr T.Text
 instance AsText Attr where
   toText (Attr n) = n
+  toText (DynamicAttr pref e suff) = pref <> "[" <> toText e <> "]" <> suff
 
 data FlagType = FlagAbode | FlagAccents | FlagANSI | FlagASCII
   | FlagAudible | FlagAuditorium | FlagBleed | FlagBlind | FlagCommands
@@ -155,19 +156,25 @@ data AttrValue = AttrValueText T.Text |
   AttrValueCommand T.Text [Softcode] |
   AttrValueListen T.Text [Softcode] |
   AttrValueProg [Softcode] |
-  AttrValueExpr SoftExpr
+  AttrValueExpr SoftExpr | -- | Expression is evaluated.
+  AttrValueFun SoftExpr -- | Expression is escaped for use as function.
 instance AsText AttrValue where
   toText (AttrValueText t) = t
   toText (AttrValueCommand t p) = "$" <> t <> ":" <> escapeSoftExpr (T.intercalate ";" (map toText p))
   toText (AttrValueListen t p) = "^" <> t <> ":" <> escapeSoftExpr (T.intercalate ";" (map toText p))
   toText (AttrValueProg p) = T.intercalate ";" (map toText p)
   toText (AttrValueExpr e) = "[" <> toText e <> "]"
+  toText (AttrValueFun e) = escapeSoftExpr (toText e)
 
   toTextExtraBrace (AttrValueCommand t p) = "$" <> t <> ":" <> (T.intercalate ";" (map toTextExtraBrace p))
   toTextExtraBrace (AttrValueProg p) = T.intercalate ";" (map toTextExtraBrace p)
   toTextExtraBrace (AttrValueExpr e) = toTextExtraBrace e
   toTextExtraBrace v = toText v
 
+
+data SoftReg = SoftReg T.Text
+instance AsText SoftReg where
+  toText (SoftReg t) = t
 
 data LocateFlag = LocateAll | LocateAbs | LocateExit | LocateHere | LocateInv | LocateMe |
                   LocateNeighbours | LocatePlayer
@@ -181,12 +188,29 @@ instance AsText LocateFlag where
   toText LocateNeighbours = "n"
   toText LocatePlayer = "p"
 
+data DelimPair =
+  NoDelim | InputDelimOnly T.Text | InputOutputDelim T.Text T.Text
+instance AsText DelimPair where
+  toText NoDelim = ""
+  toText (InputDelimOnly i) = "," <> i
+  toText (InputOutputDelim i o) = "," <> i <> "," <> o
+
 data SoftExpr = SoftEString T.Text | SoftEObj ObjName | SoftEOwner SoftExpr |
   SoftEGet ObjName Attr | SoftEName SoftExpr | SoftENum SoftExpr |
-  SoftELocate SoftExpr SoftExpr [LocateFlag] | SoftEVar T.Text |
+  SoftELocate SoftExpr SoftExpr [LocateFlag] | SoftEVar T.Text | SoftEItem |
   SoftERand SoftExpr | SoftELt SoftExpr SoftExpr | SoftEGt SoftExpr SoftExpr |
   SoftELte SoftExpr SoftExpr | SoftEGte SoftExpr SoftExpr |
-  SoftEInt Int | SoftESwitch SoftExpr [(SoftExpr, SoftExpr)] SoftExpr
+  SoftEInt Int | SoftESwitch SoftExpr [(SoftExpr, SoftExpr)] SoftExpr |
+  SoftEIf SoftExpr SoftExpr (Maybe SoftExpr) |
+  SoftEAnd [SoftExpr] | SoftEMin [SoftExpr] | SoftEMax [SoftExpr] |
+  SoftEPemit [ObjName] SoftExpr | SoftEMod SoftExpr SoftExpr |
+  SoftEAdd [SoftExpr] | SoftESub SoftExpr SoftExpr | SoftEDiv SoftExpr SoftExpr | SoftESecs |
+  SoftESetAttrEval ObjName Attr SoftExpr |
+  SoftEList SoftExpr (Maybe T.Text) SoftExpr |
+  SoftEIter SoftExpr DelimPair SoftExpr |
+  SoftESetReg SoftReg SoftExpr | SoftEGetReg SoftReg |
+  SoftEExtract SoftExpr Int Int DelimPair |
+  SoftECreated ObjName -- Non-standard but see utilities/created.txt
 instance AsText SoftExpr where
   toText (SoftEString t) = t
   toText (SoftEObj o) = toText o
@@ -195,6 +219,7 @@ instance AsText SoftExpr where
   toText (SoftEName e) = "name(" <> toText e <> ")"
   toText (SoftENum e) = "num(" <> toText e <> ")"
   toText (SoftEVar n) = "%" <> n
+  toText SoftEItem = "##"
   toText (SoftELocate looker expr flags) =
     "locate(" <> toText looker <> ","
     <> (toText expr) <> "," <>
@@ -206,8 +231,29 @@ instance AsText SoftExpr where
   toText (SoftEGte e1 e2) = "gte(" <> (toText e1) <> "," <> (toText e2) <> ")"
   toText (SoftEInt n) = T.pack . show $ n
   toText (SoftESwitch e1 l def) = "switch(" <> toText e1 <> "," <> (T.intercalate "," $ map (\(vk,vv) -> toText vk <> "," <> toText vv) l) <> "," <> toText def <> ")"
-
-                                                                   
+  toText (SoftEIf cond tcase fcaseM) =
+    "if(" <> toText cond <> "," <> toText tcase <>
+    maybe "" (\fcase -> "," <> toText fcase) fcaseM <> ")"
+  toText (SoftEAnd e) = "and(" <> T.intercalate "," (map toText e) <> ")"
+  toText (SoftEMin e) = "min(" <> T.intercalate "," (map toText e) <> ")"
+  toText (SoftEMax e) = "max(" <> T.intercalate "," (map toText e) <> ")"
+  toText (SoftEPemit t m) = "pemit(" <> T.intercalate " " (map toText t) <> "," <> toText m <> ")"
+  toText (SoftEMod e1 e2) = "mod(" <> toText e1 <> "," <> toText e2 <> ")"
+  toText (SoftEAdd es) = "add(" <> T.intercalate "," (map toText es) <> ")"
+  toText (SoftESub e1 e2) = "sub(" <> toText e1 <> "," <> toText e2 <> ")"
+  toText (SoftEDiv e1 e2) = "div(" <> toText e1 <> "," <> toText e2 <> ")"
+  toText SoftESecs = "secs()"
+  toText (SoftESetAttrEval o a v) = "set(" <> toText o <> "," <> toText a <> ":[" <> toText v <> "])"
+  toText (SoftEList l dM e) = "list(" <> toText l <> "," <> toText e <>
+                            maybe "" (","<>) dM <> ")"
+  toText (SoftEIter l d e) = "iter(" <> toText l <> "," <> toText e <>
+                                        toText d <> ")"
+  toText (SoftEGetReg r) = "r(" <> toText r <> ")"
+  toText (SoftESetReg r e) = "setq(" <> toText r <> "," <> toText e <> ")"
+  toText (SoftEExtract e i l d) = "extract(" <> toText e <> "," <> T.pack (show i) <> "," <>
+                                  T.pack (show l) <> toText d <> ")"
+  toText (SoftECreated o) = "created(" <> toText o <> ")"
+                     
 data Softcode =
     SoftcodeCreate ObjName
   | SoftcodeSetDesc ObjName T.Text
@@ -264,3 +310,6 @@ instance AsText Softcode where
 
   toTextExtraBrace (SoftcodeSetAttr a o v) = "&" <> (toText a) <> " " <> (toText o) <> "={" <> (toText v) <> "}"
   toTextExtraBrace x = toText x
+
+me :: ObjName
+me = ObjName "me"

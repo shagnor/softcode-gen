@@ -2,7 +2,8 @@
 module Main where
 
 import Softcode
-import Pregnancy
+import Pregnancy (pregnancyCode)
+import WarnLock (warnlockCode)
 import qualified Data.Text.IO as T
 import qualified Data.Text as T
 import Data.Foldable (foldMap')
@@ -10,8 +11,9 @@ import Data.Monoid
 import System.Environment
 
 softcodeFor :: String -> Maybe [Softcode]
-softcodeFor "pregnancy" = Just pregnancyCode
-softCodeFor _ = Nothing
+softcodeFor s | s == "pregnancy" = Just pregnancyCode
+              | s == "warnlock" = Just warnlockCode
+              | otherwise = Nothing
 
 main :: IO ()
 main = do

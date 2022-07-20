@@ -4,7 +4,6 @@ import Softcode
 import qualified Data.Text as T
 
 oBlank = ObjName "Blank Pregnancy Risk"
-me = ObjName "me"
 
 successChance :: Int
 successChance = 40

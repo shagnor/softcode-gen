@@ -39,6 +39,7 @@ executable softcode-gen-exe
   main-is: Main.hs
   other-modules:
       Pregnancy
+      WarnLock
       Paths_softcode_gen
   hs-source-dirs:
       app

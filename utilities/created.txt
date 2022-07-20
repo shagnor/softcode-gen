@@ -1,0 +1,7 @@
+@@ For testing against mushes with a CREATED() function that doesn't need privileges.
+
+@create Trusted Functions
+@desc Trusted Functions=Functions that can be used by any user, but use escalated privileges.
+@power Trusted Functions=free_money see_all
+&FN_CREATED Trusted Functions=convtime(ctime(%0))
+@Startup Trusted Functions=@dolist lattr(me/fn_*)=@function/privileged after(##,FN_)=me/##
